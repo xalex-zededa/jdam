@@ -70,29 +70,35 @@ func (f *Fuzzer) doFuzz(subject map[string]interface{}) map[string]interface{} {
 		return subject
 	}
 	fuzzed := map[string]interface{}{}
-	targetField := f.findTargetField(subject)
-	for k, v := range subject {
-		if k != targetField {
-			fuzzed[k] = v
-			continue
+	if targetField, ok := f.findTargetField(subject); ok {
+		for k, v := range subject {
+			if k != targetField {
+				fuzzed[k] = v
+				continue
+			}
+			if f.r.Float64() > f.nilChance {
+				fuzzed[k] = nil
+				continue
+			}
+			fuzzed[k] = f.fuzzElement(v)
 		}
-		if f.r.Float64() > f.nilChance {
-			fuzzed[k] = nil
-			continue
-		}
-		fuzzed[k] = f.fuzzElement(v)
 	}
 	f.curDepth = 0
 	return fuzzed
 }
 
-func (f *Fuzzer) findTargetField(m map[string]interface{}) string {
-	for {
-		field := f.randMapKey(m)
-		if !f.ignoredField(field) {
-			return field
+func (f *Fuzzer) findTargetField(m map[string]interface{}) (string, bool) {
+	if len(m) == 0 {
+		return "", false
+	}
+	keys := reflect.ValueOf(m).MapKeys()
+	f.r.Shuffle(len(keys), func(i, j int) { keys[i], keys[j] = keys[j], keys[i] })
+	for _, v := range keys {
+		if !f.ignoredField(v.String()) {
+			return v.String(), true
 		}
 	}
+	return "", false
 }
 
 func (f *Fuzzer) ignoredField(field string) bool {
@@ -103,11 +109,15 @@ func (f *Fuzzer) ignoredField(field string) bool {
 	}
 	return false
 }
-
-func (f *Fuzzer) randMapKey(m map[string]interface{}) string {
+/*
+func (f *Fuzzer) randMapKey(m map[string]interface{}) (string, bool) {
+	if len(m) == 0 {
+		return "", false
+	}
 	keys := reflect.ValueOf(m).MapKeys()
-	return keys[f.r.Intn(len(keys))].String()
+	return keys[f.r.Intn(len(keys))].String(), true
 }
+*/
 
 func (f *Fuzzer) randMutator(k reflect.Kind) mutation.Mutator {
 	if val, ok := f.mutators[k]; ok {
